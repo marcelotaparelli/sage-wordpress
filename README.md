@@ -1,6 +1,6 @@
 # WordPress + Sage — Runbook Completo (Ubuntu 22.04)
 
-Boilerplate de landing page com WordPress + Sage, Tailwind v4, formulário com banco de dados e menu responsivo.
+Boilerplate de landing page com WordPress + Sage, Tailwind v4, formulário com banco de dados, segurança e menu responsivo.
 
 ---
 
@@ -18,9 +18,7 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install -y software-properties-common
 sudo add-apt-repository ppa:ondrej/php
 sudo apt update
-
 sudo apt install -y php8.2 php8.2-cli php8.2-mysql php8.2-mbstring php8.2-xml php8.2-curl php8.2-zip libapache2-mod-php8.2
-
 php -v
 ```
 
@@ -188,7 +186,13 @@ wp core install \
 
 ---
 
-## 14. Tema Sage
+## 14. Permalinks
+
+Em `/wp-admin/options-permalink.php` seleciona **"Nome do post"** e salva.
+
+---
+
+## 15. Tema Sage
 
 ```bash
 cd /var/www/evolu-e/wp-content/themes
@@ -199,7 +203,7 @@ wp theme activate evolu-e-theme --path=/var/www/evolu-e
 
 ---
 
-## 15. Configurar Vite
+## 16. Configurar Vite
 
 Editar `vite.config.js`:
 
@@ -217,7 +221,7 @@ if (! process.env.APP_URL) {
 
 ---
 
-## 16. Permissões de Cache
+## 17. Permissões de Cache
 
 ```bash
 sudo mkdir -p /var/www/evolu-e/wp-content/cache
@@ -227,9 +231,11 @@ sudo chmod -R 775 /var/www/evolu-e/wp-content/cache
 wp acorn optimize --path=/var/www/evolu-e
 ```
 
+> Sempre que alterar arquivos PHP no Sage, rodar `wp acorn optimize`.
+
 ---
 
-## 17. Página Inicial Estática
+## 18. Página Inicial Estática
 
 Em `/wp-admin/options-reading.php`:
 
@@ -238,17 +244,28 @@ Em `/wp-admin/options-reading.php`:
 
 ---
 
-## 18. Desenvolvimento
+## 19. Menu no WordPress
+
+Em `/wp-admin/nav-menus.php`:
+
+1. Criar novo menu chamado "Menu Principal"
+2. Em **Links personalizados** adicionar URLs como `http://evolu-e.local/#sobre`
+3. Em **Local do menu** marcar **Primary Navigation**
+4. Salvar
+
+---
+
+## 20. Desenvolvimento
 
 ```bash
 cd /var/www/evolu-e/wp-content/themes/evolu-e-theme
-npm run dev   # desenvolvimento com hot reload
-npm run build # build para produção
+npm run dev    # desenvolvimento com hot reload
+npm run build  # build para produção
 ```
 
 ---
 
-## 19. CSS Base (Tailwind v4)
+## 21. CSS Base (Tailwind v4)
 
 `resources/css/app.css`:
 
@@ -318,30 +335,42 @@ select:has(option:checked:not([value=""])) { color: #f5f5f5; }
 @media screen and (max-width: 782px) {
   #site-header { top: 46px; }
 }
+
+/* Prose - conteúdo de páginas estáticas */
+.prose h2 { color: #f5f5f5; font-size: 1.5rem; font-weight: 700; margin-top: 2rem; margin-bottom: 1rem; }
+.prose h3 { color: #f5f5f5; font-size: 1.2rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+.prose p  { margin-bottom: 1rem; }
+.prose a  { color: #c8f04d; text-decoration: underline; }
+.prose ul { list-style: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+.prose li { margin-bottom: 0.25rem; }
 ```
 
-> **Tailwind v4:** Não existe mais `tailwind.config.js`. As configurações ficam no `@theme {}` dentro do CSS.
-> **Atenção:** Não use `* { margin: 0; padding: 0 }` — isso sobrescreve as classes do Tailwind.
+> **Tailwind v4:** Não existe mais `tailwind.config.js`. As configurações ficam no `@theme {}`.
+> **Atenção:** Não use `* { margin: 0; padding: 0 }` — sobrescreve as classes do Tailwind.
 
 ---
 
-## 20. Estrutura de Views (Blade)
+## 22. Estrutura de Views (Blade)
 
 ```
 resources/views/
 ├── layouts/
-│   └── app.blade.php           # Layout base
+│   └── app.blade.php                          # Layout base
 ├── sections/
-│   ├── header.blade.php        # Menu fixo com sandwich mobile
+│   ├── header.blade.php                       # Menu fixo com sandwich mobile
 │   ├── footer.blade.php
 │   └── sidebar.blade.php
 ├── partials/
-└── front-page.blade.php        # Página inicial (hierarquia WordPress)
+├── front-page.blade.php                       # Página inicial
+├── page.blade.php                             # Páginas genéricas
+└── page-politica-de-privacidade.blade.php     # Template específico por slug
 ```
+
+> O nome `page-{slug}.blade.php` é usado automaticamente pelo WordPress para a página com aquele slug.
 
 ---
 
-## 21. Header com Menu do WordPress
+## 23. Header com Menu e Sandwich Mobile
 
 `resources/views/sections/header.blade.php`:
 
@@ -413,11 +442,9 @@ resources/views/
 </script>
 ```
 
-> Para adicionar itens ao menu: `/wp-admin/nav-menus.php` → Links personalizados → usar URLs como `http://evolu-e.local/#sobre`.
-
 ---
 
-## 22. Formulário com Banco de Dados
+## 24. Formulário com Banco de Dados e Segurança
 
 ### Controller
 
@@ -447,6 +474,7 @@ class ContatoController
             estado VARCHAR(2),
             cidade VARCHAR(100),
             aceita_novidades TINYINT(1) DEFAULT 0,
+            ip VARCHAR(45),
             criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
         ) {$charset};";
 
@@ -467,6 +495,25 @@ class ContatoController
     {
         global $wpdb;
 
+        // Honeypot
+        if (!empty($request->get_param('honeypot'))) {
+            return new WP_REST_Response(['erro' => 'Envio inválido.'], 400);
+        }
+
+        // Rate limiting: máximo 3 envios por IP por hora
+        $ip        = $_SERVER['REMOTE_ADDR'];
+        $tabela    = $wpdb->prefix . 'evolu_e_contatos';
+        $uma_hora  = date('Y-m-d H:i:s', strtotime('-1 hour'));
+        $tentativas = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$tabela} WHERE ip = %s AND criado_em > %s",
+            $ip, $uma_hora
+        ));
+
+        if ($tentativas >= 3) {
+            return new WP_REST_Response(['erro' => 'Muitas tentativas. Tente novamente mais tarde.'], 429);
+        }
+
+        // Sanitização
         $nome             = sanitize_text_field($request->get_param('nome'));
         $email            = sanitize_email($request->get_param('email'));
         $whatsapp         = sanitize_text_field($request->get_param('whatsapp'));
@@ -478,13 +525,14 @@ class ContatoController
             return new WP_REST_Response(['erro' => 'Nome e email são obrigatórios.'], 400);
         }
 
-        $wpdb->insert($wpdb->prefix . 'evolu_e_contatos', [
+        $wpdb->insert($tabela, [
             'nome'             => $nome,
             'email'            => $email,
             'whatsapp'         => $whatsapp,
             'estado'           => $estado,
             'cidade'           => $cidade,
             'aceita_novidades' => $aceita_novidades,
+            'ip'               => $ip,
         ]);
 
         return new WP_REST_Response(['sucesso' => 'Contato registrado com sucesso!'], 201);
@@ -492,7 +540,115 @@ class ContatoController
 }
 ```
 
-### Registrar no ThemeServiceProvider
+### Admin de Contatos
+
+`app/Http/Controllers/AdminContatosController.php`:
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+class AdminContatosController
+{
+    public static function registrarMenu(): void
+    {
+        add_menu_page(
+            'Contatos',
+            'Contatos',
+            'manage_options',
+            'evolu-e-contatos',
+            [self::class, 'renderizar'],
+            'dashicons-email',
+            26
+        );
+
+        add_action('admin_head', function() {
+            echo '<style>#adminmenu li.wp-menu-separator { display: none; }</style>';
+        });
+    }
+
+    public static function renderizar(): void
+    {
+        global $wpdb;
+        $tabela = $wpdb->prefix . 'evolu_e_contatos';
+
+        if (isset($_GET['exportar']) && $_GET['exportar'] === 'csv') {
+            self::exportarCsv();
+            return;
+        }
+
+        $contatos = $wpdb->get_results("SELECT * FROM {$tabela} ORDER BY criado_em DESC");
+        ?>
+        <div class="wrap">
+            <h1>Contatos</h1>
+            <a href="?page=evolu-e-contatos&exportar=csv" class="button button-primary" style="margin: 10px 0 0 0; display: inline-block;">
+                ⬇ Exportar CSV
+            </a>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Nome</th>
+                        <th>Email</th>
+                        <th>WhatsApp</th>
+                        <th>Estado</th>
+                        <th>Cidade</th>
+                        <th>Novidades</th>
+                        <th>IP</th>
+                        <th>Data</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($contatos)): ?>
+                        <tr><td colspan="9">Nenhum contato ainda.</td></tr>
+                    <?php else: ?>
+                        <?php foreach ($contatos as $contato): ?>
+                            <tr>
+                                <td><?= $contato->id ?></td>
+                                <td><?= esc_html($contato->nome) ?></td>
+                                <td><?= esc_html($contato->email) ?></td>
+                                <td><?= esc_html($contato->whatsapp) ?></td>
+                                <td><?= esc_html($contato->estado) ?></td>
+                                <td><?= esc_html($contato->cidade) ?></td>
+                                <td><?= $contato->aceita_novidades ? '✅' : '❌' ?></td>
+                                <td><?= esc_html($contato->ip) ?></td>
+                                <td><?= esc_html($contato->criado_em) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
+    }
+
+    public static function exportarCsv(): void
+    {
+        global $wpdb;
+        $tabela   = $wpdb->prefix . 'evolu_e_contatos';
+        $contatos = $wpdb->get_results("SELECT * FROM {$tabela} ORDER BY criado_em DESC", ARRAY_A);
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename=contatos.csv');
+
+        $output = fopen('php://output', 'w');
+        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+
+        fputcsv($output, ['ID', 'Nome', 'Email', 'WhatsApp', 'Estado', 'Cidade', 'Aceita Novidades', 'IP', 'Data']);
+
+        foreach ($contatos as $contato) {
+            $contato['aceita_novidades'] = $contato['aceita_novidades'] ? 'Sim' : 'Não';
+            fputcsv($output, $contato);
+        }
+
+        fclose($output);
+        exit;
+    }
+}
+```
+
+### ThemeServiceProvider
 
 `app/Providers/ThemeServiceProvider.php`:
 
@@ -503,6 +659,7 @@ namespace App\Providers;
 
 use Roots\Acorn\Sage\SageServiceProvider;
 use App\Http\Controllers\ContatoController;
+use App\Http\Controllers\AdminContatosController;
 
 class ThemeServiceProvider extends SageServiceProvider
 {
@@ -516,15 +673,30 @@ class ThemeServiceProvider extends SageServiceProvider
         parent::boot();
         add_action('after_setup_theme', [ContatoController::class, 'criarTabela']);
         add_action('rest_api_init', [ContatoController::class, 'registrarRota']);
+        add_action('admin_menu', [AdminContatosController::class, 'registrarMenu']);
+        add_action('admin_init', function() {
+            if (
+                isset($_GET['page'], $_GET['exportar']) &&
+                $_GET['page'] === 'evolu-e-contatos' &&
+                $_GET['exportar'] === 'csv'
+            ) {
+                AdminContatosController::exportarCsv();
+            }
+        });
     }
 }
 ```
 
-Após qualquer alteração no PHP:
+---
 
-```bash
-wp acorn optimize --path=/var/www/evolu-e
-```
+## 25. Segurança do Formulário
+
+- **Honeypot** — campo invisível no formulário. Se preenchido (por bot), descarta o envio
+- **Rate limiting** — máximo 3 envios por IP por hora
+- **Sanitização** — `sanitize_text_field()` e `sanitize_email()` em todos os campos
+- **XSS** — `esc_html()` ao exibir dados no admin
+
+> O nonce do WordPress não funciona para visitantes não logados na REST API. Honeypot + rate limiting são suficientes para LPs.
 
 ---
 
@@ -547,13 +719,19 @@ sudo chmod -R 775 /var/www/evolu-e/wp-content/cache
 ```
 
 ### REST API retorna 404
-Verificar se o `.htaccess` existe em `/var/www/evolu-e/`. Se não existir, criar conforme passo 12.
+Verificar se o `.htaccess` existe em `/var/www/evolu-e/`. Se não, criar conforme passo 12.
 
 ### Vite mostrando `APP_URL: http://example.test`
-Editar `vite.config.js` conforme passo 15.
+Editar `vite.config.js` conforme passo 16.
 
 ### Padding/margin do Tailwind não funciona
-Não usar `* { margin: 0; padding: 0 }` no CSS — sobrescreve o Tailwind. Usar apenas `box-sizing: border-box`.
+Não usar `* { margin: 0; padding: 0 }` — sobrescreve o Tailwind. Usar apenas `box-sizing: border-box`.
+
+### Coluna não existe na tabela após atualizar o Controller
+Se adicionar colunas novas ao `criarTabela()`, rodar manualmente:
+```bash
+sudo mariadb -e "ALTER TABLE evolu_e.wp_evolu_e_contatos ADD COLUMN nome_coluna TIPO AFTER coluna_anterior;"
+```
 
 ---
 
@@ -565,6 +743,24 @@ Não usar `* { margin: 0; padding: 0 }` no CSS — sobrescreve o Tailwind. Usar 
    - Demais arquivos do tema (exceto `node_modules` e `vendor`)
 3. WordPress e banco devem estar configurados no Hostgator previamente
 4. Criar o `.htaccess` no Hostgator se não existir
+5. Ativar SSL (Let's Encrypt gratuito via cPanel)
+
+---
+
+## Git
+
+```bash
+git init
+git branch -m main
+git add .
+git commit -m "feat: descrição"
+gh repo create nome-do-repo --private --source=. --remote=origin --push
+
+# Commits seguintes
+git add .
+git commit -m "feat: descrição"
+git push
+```
 
 ---
 
