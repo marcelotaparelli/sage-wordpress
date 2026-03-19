@@ -1,21 +1,104 @@
-# WordPress + Sage — Runbook de Setup Local
+# WordPress + Sage — Runbook Completo (Ubuntu 22.04)
 
-Guia completo para configurar um ambiente de desenvolvimento WordPress com tema Sage no Ubuntu 22.04.
-
----
-
-## Pré-requisitos
-
-- Ubuntu 22.04
-- PHP 8.2 + extensões (`php8.2-mysql`, `php8.2-mbstring`)
-- Composer 2.x
-- Node 24 + npm 11 (via NVM)
-- Apache 2.4 com `mod_php8.2`
-- MariaDB 10.6
+Guia completo para configurar um ambiente de desenvolvimento WordPress com tema Sage do zero.
 
 ---
 
-## 1. WP-CLI
+## 1. Atualizar o sistema
+
+```bash
+sudo apt update && sudo apt upgrade -y
+```
+
+---
+
+## 2. PHP 8.2
+
+```bash
+# Adicionar repositório do PHP
+sudo apt install -y software-properties-common
+sudo add-apt-repository ppa:ondrej/php
+sudo apt update
+
+# Instalar PHP e extensões necessárias
+sudo apt install -y php8.2 php8.2-cli php8.2-mysql php8.2-mbstring php8.2-xml php8.2-curl php8.2-zip libapache2-mod-php8.2
+
+# Verificar
+php -v
+```
+
+---
+
+## 3. Apache 2.4
+
+```bash
+# Instalar
+sudo apt install -y apache2
+
+# Ativar mod_php e mod_rewrite
+sudo a2enmod php8.2
+sudo a2enmod rewrite
+
+# Iniciar e habilitar no boot
+sudo systemctl enable apache2
+sudo systemctl start apache2
+
+# Verificar
+apache2 -v
+```
+
+---
+
+## 4. MariaDB
+
+```bash
+# Instalar
+sudo apt install -y mariadb-server
+
+# Rodar setup de segurança
+sudo mysql_secure_installation
+
+# Verificar
+mariadb --version
+```
+
+---
+
+## 5. Composer
+
+```bash
+# Baixar instalador
+curl -sS https://getcomposer.org/installer | php
+
+# Mover para global
+sudo mv composer.phar /usr/local/bin/composer
+
+# Verificar
+composer --version
+```
+
+---
+
+## 6. Node + npm via NVM
+
+```bash
+# Instalar NVM
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+
+# Recarregar shell
+source ~/.bashrc
+
+# Instalar Node 24
+nvm install 24
+nvm use 24
+
+# Verificar
+node -v && npm -v
+```
+
+---
+
+## 7. WP-CLI
 
 ```bash
 # Baixar
@@ -33,7 +116,7 @@ wp --version
 
 ---
 
-## 2. Banco de Dados (MariaDB)
+## 8. Banco de Dados (MariaDB)
 
 ```bash
 sudo mariadb
@@ -51,16 +134,18 @@ EXIT;
 
 ---
 
-## 3. Pasta do Projeto
+## 9. Pasta do Projeto
 
 ```bash
 sudo mkdir /var/www/evolu-e
-sudo chown -R evag:evag /var/www/evolu-e
+sudo chown -R SEU_USUARIO:SEU_USUARIO /var/www/evolu-e
 ```
+
+> Substitua `SEU_USUARIO` pelo seu usuário do sistema (ex: `evag`).
 
 ---
 
-## 4. Virtual Host no Apache
+## 10. Virtual Host no Apache
 
 ```bash
 sudo nano /etc/apache2/sites-available/evolu-e.conf
@@ -80,23 +165,22 @@ Conteúdo:
 </VirtualHost>
 ```
 
-Ativar site e módulo rewrite:
+Ativar site e reiniciar Apache:
 
 ```bash
 sudo a2ensite evolu-e.conf
-sudo a2enmod rewrite
 sudo systemctl restart apache2
 ```
 
 ---
 
-## 5. DNS Local
+## 11. DNS Local
 
 ```bash
 sudo nano /etc/hosts
 ```
 
-Adicionar:
+Adicionar ao final:
 
 ```
 127.0.0.1       evolu-e.local
@@ -104,7 +188,7 @@ Adicionar:
 
 ---
 
-## 6. WordPress via WP-CLI
+## 12. WordPress via WP-CLI
 
 ```bash
 # Baixar WordPress em pt_BR
@@ -130,7 +214,7 @@ wp core install \
 
 ---
 
-## 7. Tema Sage
+## 13. Tema Sage
 
 ```bash
 cd /var/www/evolu-e/wp-content/themes
@@ -147,17 +231,17 @@ wp theme activate evolu-e-theme --path=/var/www/evolu-e
 
 ---
 
-## 8. Configurar Vite
+## 14. Configurar Vite
 
 Editar `vite.config.js` na pasta do tema:
 
 ```js
-// Trocar
+// Antes
 if (! process.env.APP_URL) {
   process.env.APP_URL = 'http://example.test';
 }
 
-// Por
+// Depois
 if (! process.env.APP_URL) {
   process.env.APP_URL = 'http://evolu-e.local';
 }
@@ -165,67 +249,58 @@ if (! process.env.APP_URL) {
 
 ---
 
-## 9. Permissões de Cache
+## 15. Permissões de Cache
 
 ```bash
 sudo mkdir -p /var/www/evolu-e/wp-content/cache
-sudo chown -R evag:www-data /var/www/evolu-e/wp-content/cache
+sudo chown -R SEU_USUARIO:www-data /var/www/evolu-e/wp-content/cache
 sudo chmod -R 775 /var/www/evolu-e/wp-content/cache
-```
 
-Inicializar Acorn (framework do Sage):
-
-```bash
+# Inicializar Acorn
 wp acorn optimize --path=/var/www/evolu-e
 ```
 
 ---
 
-## 10. Página Inicial Estática
+## 16. Página Inicial Estática
 
 No painel WordPress (`/wp-admin/options-reading.php`):
 
-- Sua página inicial exibe → **Uma página estática**
-- Página inicial → selecionar uma página existente
+- **Sua página inicial exibe** → Uma página estática
+- **Página inicial** → selecionar uma página existente
 
 ---
 
-## 11. Desenvolvimento
-
-### Rodar servidor de desenvolvimento
+## 17. Desenvolvimento
 
 ```bash
+# Rodar servidor de desenvolvimento
 cd /var/www/evolu-e/wp-content/themes/evolu-e-theme
 npm run dev
-```
 
-### Build para produção (deploy)
-
-```bash
+# Build para produção
 npm run build
 ```
 
-Os arquivos compilados ficam em `public/build/` — esses vão para o Hostgator.
-
 ---
 
-## 12. Estrutura de Views (Blade)
+## 18. Estrutura de Views (Blade)
 
 ```
 resources/views/
 ├── layouts/
-│   └── app.blade.php       # Layout base (html, head, body)
+│   └── app.blade.php       # Layout base
 ├── sections/
 │   ├── header.blade.php
 │   ├── footer.blade.php
 │   └── sidebar.blade.php
 ├── partials/
-├── front-page.blade.php    # Página inicial (hierarquia WordPress)
+├── front-page.blade.php    # Página inicial
 ├── page.blade.php
 └── index.blade.php
 ```
 
-### Criar página inicial customizada
+### Página inicial customizada
 
 `resources/views/front-page.blade.php`:
 
@@ -238,14 +313,14 @@ resources/views/
     <h1>Título</h1>
   </section>
 
-  {{-- Outras seções... --}}
-
 @endsection
 ```
 
+> O nome `front-page` é reservado pelo WordPress — ele usa automaticamente esse template para a página inicial.
+
 ---
 
-## 13. CSS Base (Tailwind v4)
+## 19. CSS Base (Tailwind v4)
 
 `resources/css/app.css`:
 
@@ -280,27 +355,40 @@ body {
 .sidebar, .content-info, .banner { display: none; }
 ```
 
-> **Nota:** No Tailwind v4, não existe mais `tailwind.config.js`. As configurações de tema ficam no `@theme {}` dentro do próprio CSS.
+> **Tailwind v4:** Não existe mais `tailwind.config.js`. As configurações ficam no `@theme {}` dentro do CSS.
 
 ---
 
-## Extensões PHP necessárias
+## Problemas comuns
 
+### `Call to undefined function mysqli_init()`
 ```bash
-sudo apt install php8.2-mysql
-sudo apt install php8.2-mbstring
-sudo systemctl restart apache2
+sudo apt install php8.2-mysql && sudo systemctl restart apache2
 ```
 
+### `Call to undefined function mb_split()`
+```bash
+sudo apt install php8.2-mbstring && sudo systemctl restart apache2
+```
+
+### `Permission denied` na pasta de cache
+```bash
+sudo chown -R SEU_USUARIO:www-data /var/www/evolu-e/wp-content/cache
+sudo chmod -R 775 /var/www/evolu-e/wp-content/cache
+```
+
+### Vite mostrando `APP_URL: http://example.test`
+Editar `vite.config.js` conforme passo 14.
+
 ---
 
-## Fluxo de Deploy (Hostgator)
+## Deploy (Hostgator)
 
 1. Rodar `npm run build` na pasta do tema
-2. Enviar via FTP para o Hostgator:
+2. Enviar via FTP:
    - Pasta `public/build/` do tema
    - Demais arquivos do tema (exceto `node_modules` e `vendor`)
-3. O WordPress e banco já devem estar configurados no Hostgator
+3. WordPress e banco devem estar configurados no Hostgator previamente
 
 ---
 
