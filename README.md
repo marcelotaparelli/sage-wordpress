@@ -1,6 +1,6 @@
 # WordPress + Sage — Runbook Completo (Ubuntu 22.04)
 
-Boilerplate de landing page com WordPress + Sage, Tailwind v4, formulário com banco de dados, segurança e menu responsivo.
+Boilerplate de landing page com WordPress + Sage, Tailwind v4, CPTs, formulário com banco de dados, segurança e painel admin completo.
 
 ---
 
@@ -192,7 +192,18 @@ Em `/wp-admin/options-permalink.php` seleciona **"Nome do post"** e salva.
 
 ---
 
-## 15. Tema Sage
+## 15. Permissões de uploads
+
+```bash
+sudo chown -R www-data:www-data /var/www/evolu-e/wp-content/uploads
+sudo chmod -R 775 /var/www/evolu-e/wp-content/uploads
+```
+
+> Em produção (Hostgator), verificar se a pasta `uploads` tem permissão de escrita via cPanel.
+
+---
+
+## 16. Tema Sage
 
 ```bash
 cd /var/www/evolu-e/wp-content/themes
@@ -203,7 +214,7 @@ wp theme activate evolu-e-theme --path=/var/www/evolu-e
 
 ---
 
-## 16. Configurar Vite
+## 17. Configurar Vite
 
 Editar `vite.config.js`:
 
@@ -221,7 +232,7 @@ if (! process.env.APP_URL) {
 
 ---
 
-## 17. Permissões de Cache
+## 18. Permissões de Cache
 
 ```bash
 sudo mkdir -p /var/www/evolu-e/wp-content/cache
@@ -231,11 +242,11 @@ sudo chmod -R 775 /var/www/evolu-e/wp-content/cache
 wp acorn optimize --path=/var/www/evolu-e
 ```
 
-> Sempre que alterar arquivos PHP no Sage, rodar `wp acorn optimize`.
+> Sempre que alterar arquivos PHP no Sage, rodar `wp acorn optimize` e `composer dump-autoload`.
 
 ---
 
-## 18. Página Inicial Estática
+## 19. Página Inicial Estática
 
 Em `/wp-admin/options-reading.php`:
 
@@ -244,7 +255,7 @@ Em `/wp-admin/options-reading.php`:
 
 ---
 
-## 19. Menu no WordPress
+## 20. Menu no WordPress
 
 Em `/wp-admin/nav-menus.php`:
 
@@ -255,7 +266,7 @@ Em `/wp-admin/nav-menus.php`:
 
 ---
 
-## 20. Desenvolvimento
+## 21. Desenvolvimento
 
 ```bash
 cd /var/www/evolu-e/wp-content/themes/evolu-e-theme
@@ -265,7 +276,7 @@ npm run build  # build para produção
 
 ---
 
-## 21. CSS Base (Tailwind v4)
+## 22. CSS Base (Tailwind v4)
 
 `resources/css/app.css`:
 
@@ -296,6 +307,12 @@ body {
 
 /* Ocultar elementos padrão do Sage */
 .sidebar, .content-info, .banner { display: none; }
+
+/* Offset do scroll para compensar o header fixo */
+[id] { scroll-margin-top: 80px; }
+
+/* Padding top para compensar header fixo */
+#main { padding-top: 80px; }
 
 /* Botão principal */
 .btn-primary {
@@ -330,10 +347,22 @@ select option { background-color: #0a0a0a; color: #f5f5f5; }
 select:has(option:checked:not([value=""])) { color: #f5f5f5; }
 
 /* Compensar barra admin do WordPress */
-#site-header { top: 32px; }
+.admin-bar #site-header { top: 32px; }
 
 @media screen and (max-width: 782px) {
-  #site-header { top: 46px; }
+  .admin-bar #site-header { top: 46px; }
+}
+
+/* Animações de entrada */
+.animate-on-scroll {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.animate-on-scroll.visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* Prose - conteúdo de páginas estáticas */
@@ -350,7 +379,7 @@ select:has(option:checked:not([value=""])) { color: #f5f5f5; }
 
 ---
 
-## 22. Estrutura de Views (Blade)
+## 23. Estrutura de Views (Blade)
 
 ```
 resources/views/
@@ -361,7 +390,7 @@ resources/views/
 │   ├── footer.blade.php
 │   └── sidebar.blade.php
 ├── partials/
-├── front-page.blade.php                       # Página inicial
+├── front-page.blade.php                       # Landing page
 ├── page.blade.php                             # Páginas genéricas
 └── page-politica-de-privacidade.blade.php     # Template específico por slug
 ```
@@ -370,83 +399,155 @@ resources/views/
 
 ---
 
-## 23. Header com Menu e Sandwich Mobile
+## 24. Custom Post Types
 
-`resources/views/sections/header.blade.php`:
+`app/Http/Controllers/PostTypesController.php`:
 
-```blade
-<header id="site-header" class="fixed left-0 w-full z-50 px-6 py-4 flex justify-between items-center bg-[#0a0a0a]/90 backdrop-blur-sm border-b border-[#222222]">
+```php
+<?php
 
-  <a href="{{ home_url('/') }}" class="text-xl font-bold text-white hover:text-[#c8f04d] transition">
-    Evolu-e
-  </a>
+namespace App\Http\Controllers;
 
-  <nav class="hidden md:flex items-center gap-8 text-sm text-[#888888]">
-    {!! wp_nav_menu([
-      'theme_location' => 'primary_navigation',
-      'menu_class'     => 'flex gap-8 items-center',
-      'container'      => false,
-      'echo'           => false,
-      'depth'          => 1,
-      'fallback_cb'    => false,
-    ]) !!}
-  </nav>
+class PostTypesController
+{
+    public static function registrar(): void
+    {
+        register_post_type('servico', [
+            'labels'        => ['name' => 'Serviços', 'singular_name' => 'Serviço'],
+            'public'        => false,
+            'show_ui'       => true,
+            'show_in_menu'  => true,
+            'menu_icon'     => 'dashicons-hammer',
+            'supports'      => ['title', 'editor', 'thumbnail', 'excerpt'],
+            'menu_position' => 7,
+        ]);
 
-  <button id="menu-toggle" class="md:hidden flex flex-col gap-1.5 p-2" aria-label="Menu">
-    <span class="block w-6 h-0.5 bg-white transition-all"></span>
-    <span class="block w-6 h-0.5 bg-white transition-all"></span>
-    <span class="block w-6 h-0.5 bg-white transition-all"></span>
-  </button>
+        register_post_type('cliente', [
+            'labels'        => ['name' => 'Clientes', 'singular_name' => 'Cliente'],
+            'public'        => false,
+            'show_ui'       => true,
+            'show_in_menu'  => true,
+            'menu_icon'     => 'dashicons-groups',
+            'supports'      => ['title', 'thumbnail'],
+            'menu_position' => 8,
+        ]);
 
-</header>
+        register_post_type('membro', [
+            'labels'        => ['name' => 'Equipe', 'singular_name' => 'Membro'],
+            'public'        => false,
+            'show_ui'       => true,
+            'show_in_menu'  => true,
+            'menu_icon'     => 'dashicons-businessman',
+            'supports'      => ['title', 'thumbnail', 'excerpt'],
+            'menu_position' => 9,
+        ]);
 
-<div id="mobile-menu" class="fixed left-0 w-full h-screen bg-[#0a0a0a] z-40 flex-col items-center justify-center gap-8 text-2xl font-bold hidden"
-  style="top: 0; transform: translateY(-100%); transition: transform 0.4s ease;">
-  {!! wp_nav_menu([
-    'theme_location' => 'primary_navigation',
-    'menu_class'     => 'flex flex-col items-center gap-8',
-    'container'      => false,
-    'echo'           => false,
-    'depth'          => 1,
-    'fallback_cb'    => false,
-  ]) !!}
-</div>
-
-<script>
-  const toggle = document.getElementById('menu-toggle');
-  const mobileMenu = document.getElementById('mobile-menu');
-
-  toggle.addEventListener('click', () => {
-    if (mobileMenu.classList.contains('hidden')) {
-      mobileMenu.classList.remove('hidden');
-      mobileMenu.classList.add('flex');
-      setTimeout(() => mobileMenu.style.transform = 'translateY(0)', 10);
-    } else {
-      mobileMenu.style.transform = 'translateY(-100%)';
-      setTimeout(() => {
-        mobileMenu.classList.add('hidden');
-        mobileMenu.classList.remove('flex');
-      }, 400);
+        register_post_type('depoimento', [
+            'labels'        => ['name' => 'Depoimentos', 'singular_name' => 'Depoimento'],
+            'public'        => false,
+            'show_ui'       => true,
+            'show_in_menu'  => true,
+            'menu_icon'     => 'dashicons-format-quote',
+            'supports'      => ['title', 'editor', 'thumbnail', 'excerpt'],
+            'menu_position' => 10,
+        ]);
     }
-  });
+}
+```
 
-  mobileMenu.querySelectorAll('a').forEach(link => {
-    link.addEventListener('click', () => {
-      mobileMenu.style.transform = 'translateY(-100%)';
-      setTimeout(() => {
-        mobileMenu.classList.add('hidden');
-        mobileMenu.classList.remove('flex');
-      }, 400);
-    });
-  });
-</script>
+> Para Serviços: título = nome, conteúdo = descrição, excerpt = ícone emoji, thumbnail = imagem.
+> Para Equipe: título = nome, excerpt = cargo, thumbnail = foto.
+> Para Depoimentos: título = nome, conteúdo = depoimento, excerpt = cargo/empresa, thumbnail = foto.
+> Para Clientes: título = nome, thumbnail = logo.
+
+---
+
+## 25. View Composer (variáveis globais)
+
+`app/View/Composers/App.php`:
+
+```php
+<?php
+
+namespace App\View\Composers;
+
+use Roots\Acorn\View\Composer;
+
+class App extends Composer
+{
+    protected static $views = ['*'];
+
+    public function siteName(): string
+    {
+        return get_bloginfo('name', 'display');
+    }
+
+    public function empresa(): string { return get_option('evolu_e_empresa', 'Evolu-e'); }
+    public function whatsapp(): string { return get_option('evolu_e_whatsapp', '5519999999999'); }
+    public function email(): string { return get_option('evolu_e_email', 'contato@evolu-e.com.br'); }
+    public function instagram(): string { return get_option('evolu_e_instagram', '#'); }
+    public function linkedin(): string { return get_option('evolu_e_linkedin', '#'); }
+    public function twitter(): string { return get_option('evolu_e_twitter', '#'); }
+    public function facebook(): string { return get_option('evolu_e_facebook', '#'); }
+    public function googleAnalyticsId(): string { return get_option('evolu_e_google_analytics_id', ''); }
+}
 ```
 
 ---
 
-## 24. Formulário com Banco de Dados e Segurança
+## 26. ThemeServiceProvider
 
-### Controller
+`app/Providers/ThemeServiceProvider.php`:
+
+```php
+<?php
+
+namespace App\Providers;
+
+use Roots\Acorn\Sage\SageServiceProvider;
+use App\Http\Controllers\ContatoController;
+use App\Http\Controllers\AdminContatosController;
+use App\Http\Controllers\AdminConfiguracoesController;
+use App\Http\Controllers\AdminConteudoController;
+use App\Http\Controllers\PostTypesController;
+
+class ThemeServiceProvider extends SageServiceProvider
+{
+    public function register()
+    {
+        parent::register();
+    }
+
+    public function boot()
+    {
+        parent::boot();
+
+        add_action('after_setup_theme', [ContatoController::class, 'criarTabela']);
+        add_action('rest_api_init', [ContatoController::class, 'registrarRota']);
+        add_action('init', [PostTypesController::class, 'registrar']);
+
+        add_action('admin_menu', [AdminContatosController::class, 'registrarMenu']);
+        add_action('admin_menu', [AdminConfiguracoesController::class, 'registrarMenu']);
+        add_action('admin_menu', function() {
+            AdminConteudoController::registrarMenu();
+        });
+
+        add_action('admin_init', function() {
+            if (
+                isset($_GET['page'], $_GET['exportar']) &&
+                $_GET['page'] === 'evolu-e-contatos' &&
+                $_GET['exportar'] === 'csv'
+            ) {
+                AdminContatosController::exportarCsv();
+            }
+        });
+    }
+}
+```
+
+---
+
+## 27. Formulário com Banco de Dados e Segurança
 
 `app/Http/Controllers/ContatoController.php`:
 
@@ -513,7 +614,6 @@ class ContatoController
             return new WP_REST_Response(['erro' => 'Muitas tentativas. Tente novamente mais tarde.'], 429);
         }
 
-        // Sanitização
         $nome             = sanitize_text_field($request->get_param('nome'));
         $email            = sanitize_email($request->get_param('email'));
         $whatsapp         = sanitize_text_field($request->get_param('whatsapp'));
@@ -540,163 +640,64 @@ class ContatoController
 }
 ```
 
-### Admin de Contatos
+---
 
-`app/Http/Controllers/AdminContatosController.php`:
+## 28. Painel Admin — Configurações da Empresa
 
-```php
-<?php
+Campos configuráveis em `/wp-admin/admin.php?page=evolu-e-configuracoes`:
 
-namespace App\Http\Controllers;
-
-class AdminContatosController
-{
-    public static function registrarMenu(): void
-    {
-        add_menu_page(
-            'Contatos',
-            'Contatos',
-            'manage_options',
-            'evolu-e-contatos',
-            [self::class, 'renderizar'],
-            'dashicons-email',
-            26
-        );
-
-        add_action('admin_head', function() {
-            echo '<style>#adminmenu li.wp-menu-separator { display: none; }</style>';
-        });
-    }
-
-    public static function renderizar(): void
-    {
-        global $wpdb;
-        $tabela = $wpdb->prefix . 'evolu_e_contatos';
-
-        if (isset($_GET['exportar']) && $_GET['exportar'] === 'csv') {
-            self::exportarCsv();
-            return;
-        }
-
-        $contatos = $wpdb->get_results("SELECT * FROM {$tabela} ORDER BY criado_em DESC");
-        ?>
-        <div class="wrap">
-            <h1>Contatos</h1>
-            <a href="?page=evolu-e-contatos&exportar=csv" class="button button-primary" style="margin: 10px 0 0 0; display: inline-block;">
-                ⬇ Exportar CSV
-            </a>
-            <table class="wp-list-table widefat fixed striped">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Nome</th>
-                        <th>Email</th>
-                        <th>WhatsApp</th>
-                        <th>Estado</th>
-                        <th>Cidade</th>
-                        <th>Novidades</th>
-                        <th>IP</th>
-                        <th>Data</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($contatos)): ?>
-                        <tr><td colspan="9">Nenhum contato ainda.</td></tr>
-                    <?php else: ?>
-                        <?php foreach ($contatos as $contato): ?>
-                            <tr>
-                                <td><?= $contato->id ?></td>
-                                <td><?= esc_html($contato->nome) ?></td>
-                                <td><?= esc_html($contato->email) ?></td>
-                                <td><?= esc_html($contato->whatsapp) ?></td>
-                                <td><?= esc_html($contato->estado) ?></td>
-                                <td><?= esc_html($contato->cidade) ?></td>
-                                <td><?= $contato->aceita_novidades ? '✅' : '❌' ?></td>
-                                <td><?= esc_html($contato->ip) ?></td>
-                                <td><?= esc_html($contato->criado_em) ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-        <?php
-    }
-
-    public static function exportarCsv(): void
-    {
-        global $wpdb;
-        $tabela   = $wpdb->prefix . 'evolu_e_contatos';
-        $contatos = $wpdb->get_results("SELECT * FROM {$tabela} ORDER BY criado_em DESC", ARRAY_A);
-
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename=contatos.csv');
-
-        $output = fopen('php://output', 'w');
-        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
-
-        fputcsv($output, ['ID', 'Nome', 'Email', 'WhatsApp', 'Estado', 'Cidade', 'Aceita Novidades', 'IP', 'Data']);
-
-        foreach ($contatos as $contato) {
-            $contato['aceita_novidades'] = $contato['aceita_novidades'] ? 'Sim' : 'Não';
-            fputcsv($output, $contato);
-        }
-
-        fclose($output);
-        exit;
-    }
-}
-```
-
-### ThemeServiceProvider
-
-`app/Providers/ThemeServiceProvider.php`:
-
-```php
-<?php
-
-namespace App\Providers;
-
-use Roots\Acorn\Sage\SageServiceProvider;
-use App\Http\Controllers\ContatoController;
-use App\Http\Controllers\AdminContatosController;
-
-class ThemeServiceProvider extends SageServiceProvider
-{
-    public function register()
-    {
-        parent::register();
-    }
-
-    public function boot()
-    {
-        parent::boot();
-        add_action('after_setup_theme', [ContatoController::class, 'criarTabela']);
-        add_action('rest_api_init', [ContatoController::class, 'registrarRota']);
-        add_action('admin_menu', [AdminContatosController::class, 'registrarMenu']);
-        add_action('admin_init', function() {
-            if (
-                isset($_GET['page'], $_GET['exportar']) &&
-                $_GET['page'] === 'evolu-e-contatos' &&
-                $_GET['exportar'] === 'csv'
-            ) {
-                AdminContatosController::exportarCsv();
-            }
-        });
-    }
-}
-```
+- Nome da Empresa
+- WhatsApp (formato: `5519999999999`)
+- E-mail de contato
+- Instagram, LinkedIn, Twitter/X, Facebook (URLs completas)
+- Google Analytics ID (ex: `G-XXXXXXXXXX`)
 
 ---
 
-## 25. Segurança do Formulário
+## 29. Painel Admin — Conteúdo da LP
 
-- **Honeypot** — campo invisível no formulário. Se preenchido (por bot), descarta o envio
+Campos configuráveis em `/wp-admin/admin.php?page=evolu-e-conteudo`:
+
+**Hero:** pré-título, título parte 1, título destaque, subtítulo, texto do botão CTA
+
+**Sobre:** título parte 1, título destaque, parágrafo 1, parágrafo 2, 4 métricas (número + label)
+
+**Contato:** pré-título, título parte 1, título destaque, subtítulo
+
+---
+
+## 30. Google Analytics + Cookie Consent
+
+No `layouts/app.blade.php`, antes do `</head>`:
+
+```blade
+@if($googleAnalyticsId)
+  <script async src="https://www.googletagmanager.com/gtag/js?id={{ $googleAnalyticsId }}"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+
+    gtag('consent', 'default', { analytics_storage: 'denied' });
+    gtag('js', new Date());
+    gtag('config', '{{ $googleAnalyticsId }}');
+
+    if (localStorage.getItem('evolu_e_cookie_consent') === 'aceito') {
+      gtag('consent', 'update', { analytics_storage: 'granted' });
+    }
+  </script>
+@endif
+```
+
+O cookie consent aparece automaticamente quando o GA está configurado.
+
+---
+
+## Segurança do Formulário
+
+- **Honeypot** — campo invisível; se preenchido por bot, descarta o envio
 - **Rate limiting** — máximo 3 envios por IP por hora
 - **Sanitização** — `sanitize_text_field()` e `sanitize_email()` em todos os campos
 - **XSS** — `esc_html()` ao exibir dados no admin
-
-> O nonce do WordPress não funciona para visitantes não logados na REST API. Honeypot + rate limiting são suficientes para LPs.
 
 ---
 
@@ -718,42 +719,44 @@ sudo chown -R SEU_USUARIO:www-data /var/www/evolu-e/wp-content/cache
 sudo chmod -R 775 /var/www/evolu-e/wp-content/cache
 ```
 
+### `Permission denied` na pasta de uploads
+```bash
+sudo chown -R www-data:www-data /var/www/evolu-e/wp-content/uploads
+sudo chmod -R 775 /var/www/evolu-e/wp-content/uploads
+```
+
 ### REST API retorna 404
 Verificar se o `.htaccess` existe em `/var/www/evolu-e/`. Se não, criar conforme passo 12.
 
 ### Vite mostrando `APP_URL: http://example.test`
-Editar `vite.config.js` conforme passo 16.
+Editar `vite.config.js` conforme passo 17.
 
 ### Padding/margin do Tailwind não funciona
 Não usar `* { margin: 0; padding: 0 }` — sobrescreve o Tailwind. Usar apenas `box-sizing: border-box`.
 
+### Classe PHP não encontrada após criar novo controller
+```bash
+composer dump-autoload
+wp acorn optimize --path=/var/www/evolu-e
+```
+
 ### Coluna não existe na tabela após atualizar o Controller
-Se adicionar colunas novas ao `criarTabela()`, rodar manualmente:
 ```bash
 sudo mariadb -e "ALTER TABLE evolu_e.wp_evolu_e_contatos ADD COLUMN nome_coluna TIPO AFTER coluna_anterior;"
 ```
 
 ---
 
-## Deploy (Hostgator)
-
-1. Rodar `npm run build` na pasta do tema
-2. Enviar via FTP:
-   - Pasta `public/build/` do tema
-   - Demais arquivos do tema (exceto `node_modules` e `vendor`)
-3. WordPress e banco devem estar configurados no Hostgator previamente
-4. Criar o `.htaccess` no Hostgator se não existir
-5. Ativar SSL (Let's Encrypt gratuito via cPanel)
-
----
-
 ## Git
 
 ```bash
+# Iniciar repositório
 git init
 git branch -m main
 git add .
-git commit -m "feat: descrição"
+git commit -m "feat: boilerplate inicial"
+
+# Criar repositório no GitHub
 gh repo create nome-do-repo --private --source=. --remote=origin --push
 
 # Commits seguintes
@@ -761,6 +764,19 @@ git add .
 git commit -m "feat: descrição"
 git push
 ```
+
+---
+
+## Deploy (Hostgator)
+
+1. Rodar `npm run build` na pasta do tema
+2. Enviar via FTP (exceto `node_modules` e `vendor`):
+   - Pasta `public/build/` do tema
+   - Demais arquivos do tema
+3. WordPress e banco devem estar configurados no Hostgator previamente
+4. Verificar se `.htaccess` existe na raiz do site
+5. Verificar permissões da pasta `uploads` via cPanel
+6. Ativar SSL via cPanel (Let's Encrypt gratuito)
 
 ---
 
